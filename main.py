@@ -50,14 +50,15 @@ def create_user(user):
     first_name = user.first_name
     last_name = user.last_name
     user_name = user.username
+    language = user.language_code
 
     if user_name is None:
         user_name = ""
 
-    cursor.execute("""INSERT INTO users (user_id, first_name, last_name, username)
-                      VALUES (%s, %s, %s, %s);
+    cursor.execute("""INSERT INTO users (user_id, first_name, last_name, username, language)
+                      VALUES (%s, %s, %s, %s, %s);
                    """,
-                   (user_id, first_name, last_name, user_name))
+                   (user_id, first_name, last_name, user_name, language))
     conn.commit()
 
 
@@ -84,7 +85,7 @@ async def send_start(message: types.Message):
         create_user(user)
         current_user = user_exist(user_id)
 
-    await bot.send_message(message.chat.id, "Добро пожаловать, {}! 👋🏻".format(current_user[0][1]),
+    await bot.send_message(message.chat.id, f"Добро пожаловать, {current_user[0][1]}! 👋🏻",
                            reply_markup=main_menu_keyboard())
 
 
@@ -97,7 +98,7 @@ async def send_message(message: types.Message):
                                parse_mode="Markdown")
 
     elif message.text == "Поддержка":
-        await bot.send_message(user_id, "По всем вопросам обращайтесь - {}".format(config.SUPPORT))
+        await bot.send_message(user_id, f"По всем вопросам обращайтесь - {config.SUPPORT}")
 
 
 def setup_handlers(dispatcher: Dispatcher):
