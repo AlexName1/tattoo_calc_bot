@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "disable_existing_loggers": "false",
+  "formatters": {
+    "basic": {
+      "class": "logging.Formatter",
+      "datefmt": "%d-%m-%Y %H:%M:%S",
+      "format": "%(asctime)s (%(filename)s:%(lineno)d %(threadName)s) %(levelname)s - %(name)s - %(message)s"
+    }
+  },
+  "handlers": {
+    "console": {
+      "class": "logging.StreamHandler",
+      "level": "DEBUG",
+      "formatter": "basic",
+      "stream": "ext://sys.stdout"
+    },
+    "file": {
+      "class": "logging.handlers.TimedRotatingFileHandler",
+      "level": "DEBUG",
+      "formatter": "basic",
+      "filename": "",
+      "when": "midnight",
+      "backupCount": 31,
+      "encoding": "utf-8"
+    },
+    "error_file": {
+      "class": "logging.FileHandler",
+      "level": "WARNING",
+      "formatter": "basic",
+      "filename": "",
+      "mode": "a",
+      "encoding": "utf-8"
+    }
+  },
+  "loggers": {
+    "TeleBot": {
+      "level": "DEBUG"
+    },
+    "asyncio": {
+    },
+    "pkg_resources": {
+    },
+    "concurrent": {
+    },
+    "urllib3": {
+      "level": "WARNING"
+    },
+    "charset_normalizer": {
+    },
+    "requests": {
+    },
+    "blockcypher": {
+    },
+    "aiohttp": {
+    },
+    "": {
+      "level": "DEBUG",
+      "handlers": ["file", "error_file"],
+      "propagate": "True"
+    }
+  }
+}
