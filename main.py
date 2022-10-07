@@ -8,7 +8,7 @@ import psycopg2
 from aiogram import Bot, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import Dispatcher, FSMContext
-from aiogram.dispatcher.filters.state import State, StatesGroup
+# from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.dispatcher.webhook import configure_app
 from aiogram.utils.callback_data import CallbackData
 from aiohttp import web
@@ -41,9 +41,9 @@ dp = Dispatcher(bot, storage=storage)
 calc_cb = CallbackData('calc', 'name', 'action')
 
 
-class FormCalc(StatesGroup):
-    style = State()
-    size = State()
+# class FormCalc(StatesGroup):
+#     style = State()
+#     size = State()
 
 
 def create_user(user):
@@ -104,8 +104,8 @@ async def send_message(message: types.Message):
             keyboard_markup.add(types.InlineKeyboardButton
                                 (style[0], callback_data=calc_cb.new(name=style[0], action='style')))
 
-        keyboard_markup.add(types.InlineKeyboardButton('Отмена', callback_data='cancel'))
-        await FormCalc.style.set()
+        # keyboard_markup.add(types.InlineKeyboardButton('Отмена', callback_data='cancel'))
+        # await FormCalc.style.set()
         await bot.send_message(user_id, "Выберите стиль:", reply_markup=keyboard_markup)
 
     elif message.text == "Поддержка":
@@ -129,30 +129,36 @@ async def style_callback(call: types.CallbackQuery, callback_data: typing.Dict[s
                                                        callback_data=calc_cb.new(name=size[0],
                                                                                  action='size')))
 
-    keyboard_markup.add(types.InlineKeyboardButton('Отмена', callback_data='cancel'))
-    await FormCalc.next()
+    # keyboard_markup.add(types.InlineKeyboardButton('Отмена', callback_data='cancel'))
+    # await FormCalc.next()
     await bot.edit_message_text(chat_id=call.from_user.id, message_id=call.message.message_id,
                                 text='Выберите размер:', reply_markup=keyboard_markup)
 
 
 # Хендлер размера
 async def size_callback(call: types.CallbackQuery, callback_data: typing.Dict[str, str], state: FSMContext):
-    async with state.proxy() as data:
-        data['size'] = callback_data['name']
+    try:
+        async with state.proxy() as data:
+            data['size'] = callback_data['name']
 
-        cursor.execute("""SELECT sizes.price
-                          FROM sizes
-                          JOIN "styles" on "styles"."id_style" = sizes.id_style
-                          WHERE styles.name = %s and sizes.sm = %s""", (data['style'], data['size'],))
-        price = cursor.fetchone()
+            cursor.execute("""SELECT sizes.price
+                              FROM sizes
+                              JOIN "styles" on "styles"."id_style" = sizes.id_style
+                              WHERE styles.name = %s and sizes.sm = %s""", (data['style'], data['size'],))
+            price = cursor.fetchone()
 
-    await state.finish()
-    await bot.edit_message_text(chat_id=call.from_user.id, message_id=call.message.message_id,
-                                text=f'*Итого:*\n'
-                                     f'Стиль: {data["style"]}\n'
-                                     f'Размер: {data["size"]}\n'
-                                     f'Цена: *{price[0]}* руб.\n',
-                                parse_mode="Markdown")
+        await state.finish()
+        await bot.edit_message_text(chat_id=call.from_user.id, message_id=call.message.message_id,
+                                    text=f'*Итого:*\n'
+                                         f'Стиль: {data["style"]}\n'
+                                         f'Размер: {data["size"]}\n'
+                                         f'Цена: *{price[0]}* руб.\n',
+                                    parse_mode="Markdown")
+    except KeyError as ex:
+        log.exception("ERROR", ex)
+        await state.finish()
+        await bot.edit_message_text(chat_id=call.from_user.id, message_id=call.message.message_id,
+                                    text=f'Ошибка')
 
 
 async def cancel(call: types.CallbackQuery, state: FSMContext):
@@ -173,8 +179,8 @@ async def cancel(call: types.CallbackQuery, state: FSMContext):
 def setup_handlers(dispatcher: Dispatcher):
     dispatcher.register_message_handler(send_start, commands=['start'])
     dispatcher.register_message_handler(send_message, text=["Калькулятор", "Поддержка"])
-    dispatcher.register_callback_query_handler(style_callback, calc_cb.filter(action='style'), state=FormCalc.style)
-    dispatcher.register_callback_query_handler(size_callback, calc_cb.filter(action='size'), state=FormCalc.size)
+    dispatcher.register_callback_query_handler(style_callback, calc_cb.filter(action='style'))
+    dispatcher.register_callback_query_handler(size_callback, calc_cb.filter(action='size'))
     dispatcher.register_callback_query_handler(cancel, text="cancel", state='*')
 
 
