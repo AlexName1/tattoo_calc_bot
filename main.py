@@ -2,11 +2,12 @@ import json
 import logging.config
 import ssl
 import sys
+import typing
 
 import psycopg2
 from aiogram import Bot, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.dispatcher import Dispatcher
+from aiogram.dispatcher import Dispatcher, FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.dispatcher.webhook import configure_app
 from aiogram.utils.callback_data import CallbackData
@@ -37,12 +38,12 @@ bot = Bot(token=config.API_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
-product_cb = CallbackData('buy', 'name', 'action')
-deposit_cb = CallbackData('deposit', 'action')
+calc_cb = CallbackData('calc', 'name', 'action')
 
 
-class FormProducts(StatesGroup):
-    city = State()
+class FormCalc(StatesGroup):
+    style = State()
+    size = State()
 
 
 def create_user(user):
@@ -54,6 +55,9 @@ def create_user(user):
 
     if user_name is None:
         user_name = ""
+
+    if last_name is None:
+        last_name = ""
 
     cursor.execute("""INSERT INTO users (user_id, first_name, last_name, username, language)
                       VALUES (%s, %s, %s, %s, %s);
@@ -72,8 +76,8 @@ def user_exist(user_id):
 
 def main_menu_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.row(types.KeyboardButton('Калькулятор'))
-    markup.row(types.KeyboardButton('Поддержка'))
+    markup.row(types.KeyboardButton('Калькулятор'), types.KeyboardButton('Поддержка'))
+    # markup.row(types.KeyboardButton('Поддержка'))
     return markup
 
 
@@ -89,21 +93,89 @@ async def send_start(message: types.Message):
                            reply_markup=main_menu_keyboard())
 
 
-@dp.message_handler(text=["Калькулятор", "Поддержка"])
 async def send_message(message: types.Message):
     user_id = message.from_user.id
 
     if message.text == "Калькулятор":
-        await bot.send_message(user_id, f"Калькулятор",
-                               parse_mode="Markdown")
+        keyboard_markup = types.InlineKeyboardMarkup()
+        cursor.execute("""SELECT name FROM styles""")
+        styles = cursor.fetchall()
+        for style in styles:
+            keyboard_markup.add(types.InlineKeyboardButton
+                                (style[0], callback_data=calc_cb.new(name=style[0], action='style')))
+
+        keyboard_markup.add(types.InlineKeyboardButton('Отмена', callback_data='cancel'))
+        await FormCalc.style.set()
+        await bot.send_message(user_id, "Выберите стиль:", reply_markup=keyboard_markup)
 
     elif message.text == "Поддержка":
         await bot.send_message(user_id, f"По всем вопросам обращайтесь - {config.SUPPORT}")
 
 
+# Хендлер стиля
+async def style_callback(call: types.CallbackQuery, callback_data: typing.Dict[str, str], state: FSMContext):
+    async with state.proxy() as data:
+        data['style'] = callback_data['name']
+
+        cursor.execute("""SELECT sizes.sm
+                          FROM sizes
+                          JOIN "styles" on "styles"."id_style" = sizes.id_style
+                          WHERE styles.name = %s""", (data['style'],))
+        sizes = cursor.fetchall()
+
+    keyboard_markup = types.InlineKeyboardMarkup()
+    for size in sizes:
+        keyboard_markup.add(types.InlineKeyboardButton(size[0],
+                                                       callback_data=calc_cb.new(name=size[0],
+                                                                                 action='size')))
+
+    keyboard_markup.add(types.InlineKeyboardButton('Отмена', callback_data='cancel'))
+    await FormCalc.next()
+    await bot.edit_message_text(chat_id=call.from_user.id, message_id=call.message.message_id,
+                                text='Выберите размер:', reply_markup=keyboard_markup)
+
+
+# Хендлер размера
+async def size_callback(call: types.CallbackQuery, callback_data: typing.Dict[str, str], state: FSMContext):
+    async with state.proxy() as data:
+        data['size'] = callback_data['name']
+
+        cursor.execute("""SELECT sizes.price
+                          FROM sizes
+                          JOIN "styles" on "styles"."id_style" = sizes.id_style
+                          WHERE styles.name = %s and sizes.sm = %s""", (data['style'], data['size'],))
+        price = cursor.fetchone()
+
+    await state.finish()
+    await bot.edit_message_text(chat_id=call.from_user.id, message_id=call.message.message_id,
+                                text=f'*Итого:*\n'
+                                     f'Стиль: {data["style"]}\n'
+                                     f'Размер: {data["size"]}\n'
+                                     f'Цена: *{price[0]}* руб.\n',
+                                parse_mode="Markdown")
+
+
+async def cancel(call: types.CallbackQuery, state: FSMContext):
+    """
+    Allow user to cancel catalog action
+    """
+    current_state = await state.get_state()
+    if current_state is None:
+        return
+
+    # Cancel state and inform user about it
+    await state.finish()
+    # And remove keyboard (just in case)
+    await bot.edit_message_text(chat_id=call.from_user.id, message_id=call.message.message_id,
+                                text='Отмена')
+
+
 def setup_handlers(dispatcher: Dispatcher):
     dispatcher.register_message_handler(send_start, commands=['start'])
     dispatcher.register_message_handler(send_message, text=["Калькулятор", "Поддержка"])
+    dispatcher.register_callback_query_handler(style_callback, calc_cb.filter(action='style'), state=FormCalc.style)
+    dispatcher.register_callback_query_handler(size_callback, calc_cb.filter(action='size'), state=FormCalc.size)
+    dispatcher.register_callback_query_handler(cancel, text="cancel", state='*')
 
 
 async def on_startup(_app):
